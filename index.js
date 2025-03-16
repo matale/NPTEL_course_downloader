@@ -6,6 +6,7 @@ import { dirname } from "path";
 import { promisify } from "util";
 import stream from "stream";
 import { parse } from "comment-json";
+import cliProgress from "cli-progress";
 
 const pipeline = promisify(stream.pipeline);
 
@@ -99,6 +100,51 @@ async function downloadVideo(videos, courseTitle, courseId) {
     `Total ${videos.length} video files to download for course ${courseTitle}.`
   );
 
+  async function downloadFileWithProgress(url, filePath, filename) {
+    const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
+    let totalBytes = 0;
+    let downloadedBytes = 0;
+
+    try {
+      console.log(`Start downloading: ${filename}`); // Keep this for initial logging
+
+      const response = await axios({
+        method: 'get',
+        url,
+        responseType: 'stream',
+      });
+
+      totalBytes = parseInt(response.headers['content-length'], 10);
+
+      if (isNaN(totalBytes)) {
+        console.warn("Content-Length header not found. Progress bar will not be accurate.");
+      }
+      else {
+        progressBar.start(totalBytes, 0);
+      }
+ 
+      const writeStream = fs.createWriteStream(filePath);
+
+      response.data.on('data', (chunk) => {
+        downloadedBytes += chunk.length;
+        if (!isNaN(totalBytes)) {
+          progressBar.update(downloadedBytes);
+        }
+      });
+
+      await pipeline(response.data, writeStream);
+
+      if (!isNaN(totalBytes)) {
+        progressBar.stop();
+      }
+      console.log(`Downloaded: ${filename}`); // Keep this for final logging
+    } catch (error) {
+      progressBar.stop();
+      console.error(`Error downloading ${filename}:`, error.message);
+      throw error;
+    }
+  }
+
   while (videos.length > 0) {
     const video = videos.shift();
 
@@ -118,15 +164,7 @@ async function downloadVideo(videos, courseTitle, courseId) {
     const filePath = path.join(videosDir, filename);
 
     try {
-      console.log(`Start downloading: ${filename}`);
-      const response = await axios({
-        method: "get",
-        url,
-        responseType: "stream",
-      });
-
-      await pipeline(response.data, fs.createWriteStream(filePath));
-      console.log(`Downloaded: ${filename}`);
+      await downloadFileWithProgress(url, filePath, filename);
     } catch (error) {
       console.error(`Error downloading ${filename}:`, error.message);
     }
@@ -261,9 +299,9 @@ async function fetchData(courseId) {
     const {
       course_downloads: videos,
       transcripts,
-      audio,
       books,
-      assignments,
+      audio, //TODO: Maybe, is audio actually available?
+      assignments, //TODO: Assignments
       title: courseTitle,
       course_id: responseCourseId,
     } = response.data.data;
