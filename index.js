@@ -69,7 +69,23 @@ console.log("Config loaded successfully:", config);
 // Accessing config values
 const COURSE_IDS_TO_DOWNLOAD = config.course_ids_to_download;
 const DOWNLOAD_VIDEOS = config.download_videos;
+const BOOK_LANGUAGES = config.book_languages;
 const TRANSCRIPT_LANGUAGES = config.transcript_languages;
+
+//Unfortunately transcripts are in a GoogleDrive and the urls are not download friendly try to convert to download urls.
+function convertDriveUrl(url) {
+  if (!url.includes("drive.google.com")) return url;
+
+  const regex = /\/d\/([a-zA-Z0-9_-]+)/;
+  const match = url.match(regex);
+  const fileId = match ? match[1] : null;
+
+  if (!fileId) {
+    console.warn(`Could not find GoogleDrive file id for ${url} skipping`);
+    return url;
+  }
+  return `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0`;
+}
 
 async function downloadVideo(videos, courseTitle, courseId) {
   if (!DOWNLOAD_VIDEOS) {
@@ -161,20 +177,7 @@ async function downloadTranscripts(transcripts, courseTitle, courseId) {
     while (downloads.length > 0) {
       const download = downloads.shift();
       const { language } = download;
-      let url = download.url;
-
-      //Unfortunately transcripts are in a GoogleDrive and the urls are not download friendly try to convert to download urls.
-      if (url.includes("drive.google.com")) {
-        const regex = /\/d\/([a-zA-Z0-9_-]+)/;
-        const match = url.match(regex);
-        const fileId = match ? match[1] : null;
-
-        if (!fileId) {
-          console.warn(`Could not find GoogleDrive file id for ${url} skipping`);
-          return;
-        }
-        url = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0`;
-      }
+      const url = convertDriveUrl(download.url);
 
       const filename = `${lessonId.padStart(2, "0")}_${title.replace(
         /\s+/g,
@@ -198,6 +201,57 @@ async function downloadTranscripts(transcripts, courseTitle, courseId) {
   }
 }
 
+async function downloadBooks(books, courseTitle, courseId) {
+  if (BOOK_LANGUAGES.length < 1) {
+    console.warn("Configured not to download books, skipping.");
+  }
+  if (!books || !Array.isArray(books)) {
+    throw new Error("Invalid course downloads data");
+  }
+
+  const wantedBooks = books.filter(
+    (book) =>
+      BOOK_LANGUAGES.some((language) => book.title.includes(language)) &&
+      book.url !== null
+  );
+
+  console.log(
+    `Total ${wantedBooks.length} book files to download for course ${courseTitle}.`
+  );
+
+  while (wantedBooks.length > 0) {
+    const book = wantedBooks.shift();
+
+    const bookDir = `downloads/${courseId}_${courseTitle}/books`.replace(
+      /[\s:]+/g,
+      "_"
+    );
+
+    if (!fs.existsSync(bookDir)) {
+      fs.mkdirSync(bookDir, { recursive: true });
+    }
+    const { title } = book;
+    const url = convertDriveUrl(book.url);
+
+    const filename = `${title.replace(/\s+/g, "_")}_book.pdf`;
+    const filePath = path.join(bookDir, filename);
+
+    try {
+      console.log(`Start downloading: ${filename}`);
+      const response = await axios({
+        method: "get",
+        url,
+        responseType: "stream",
+      });
+
+      await pipeline(response.data, fs.createWriteStream(filePath));
+      console.log(`Downloaded: ${filename}`);
+    } catch (error) {
+      console.error(`Error downloading ${filename}:`, error.message);
+    }
+  }
+}
+
 async function fetchData(courseId) {
   try {
     const baseDownloadsUrl =
@@ -216,6 +270,7 @@ async function fetchData(courseId) {
 
     await downloadVideo(videos, courseTitle, responseCourseId);
     await downloadTranscripts(transcripts, courseTitle, responseCourseId);
+    await downloadBooks(books, courseTitle, responseCourseId);
 
     console.log("All downloads completed!");
   } catch (error) {
