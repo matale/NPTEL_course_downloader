@@ -9,6 +9,8 @@ import { parse } from "comment-json";
 import cliProgress from "cli-progress";
 import colors from "ansi-colors";
 
+var isWin = process.platform === "win32";
+
 const pipeline = promisify(stream.pipeline);
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,7 +76,7 @@ const DOWNLOAD_VIDEOS = config.download_videos;
 const BOOK_LANGUAGES = config.book_languages;
 const TRANSCRIPT_LANGUAGES = config.transcript_languages;
 
-//Unfortunately transcripts are in a GoogleDrive and the urls are not download friendly try to convert to download urls.
+// Unfortunately transcripts are in a GoogleDrive and the urls are not download friendly try to convert to download urls.
 function convertDriveUrl(url) {
   if (!url.includes("drive.google.com")) return url;
 
@@ -90,20 +92,6 @@ function convertDriveUrl(url) {
 }
 
 async function downloadFileWithProgress(url, filePath, filename) {
-  const progressBar = new cliProgress.SingleBar(
-    {
-      format:
-        colors.cyan("{bar}") +
-        "| {percentage}% || {value}/{total} MB",
-      barCompleteChar: "\u2588",
-      barIncompleteChar: "\u2591",
-      hideCursor: true,
-    },
-    cliProgress.Presets.shades_classic
-  );
-  let totalBytes = 0;
-  let downloadedBytes = 0;
-
   try {
     console.log(`Start downloading: ${filename}`); // Keep this for initial logging
 
@@ -113,39 +101,51 @@ async function downloadFileWithProgress(url, filePath, filename) {
       responseType: "stream",
     });
 
-    totalBytes = parseInt(response.headers["content-length"], 10);
+    //Progress bar not supported on Windows CMD but might work if using bash in Windows.
+    if (!isWin) {
+      let totalBytes = 0;
+      let downloadedBytes = 0;
+      totalBytes = parseInt(response.headers["content-length"], 10);
 
-    if (isNaN(totalBytes)) {
-      console.warn(
-        "Content-Length header not found. Progress bar will not be accurate."
+      const progressBar = new cliProgress.SingleBar(
+        {
+          format:
+            colors.cyan("{bar}") + "| {percentage}% || {value}/{total} MB",
+          barCompleteChar: "\u2588",
+          barIncompleteChar: "\u2591",
+          hideCursor: true,
+        },
+        cliProgress.Presets.shades_classic
       );
-    } else {
-      const totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
-      progressBar.start(totalMB, 0);
+
+      if (isNaN(totalBytes)) {
+        console.warn(
+          "Content-Length header not found. Progress bar will not be accurate."
+        );
+      } else {
+        const totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
+        progressBar.start(totalMB, 0);
+      }
+
+      response.data.on("data", (chunk) => {
+        downloadedBytes += chunk.length;
+        if (!isNaN(totalBytes)) {
+          const downloadedMB = parseFloat(
+            (downloadedBytes / (8 * 1024 * 1024)).toFixed(2)
+          );
+          progressBar.update(downloadedMB);
+        }
+      });
     }
 
     const writeStream = fs.createWriteStream(filePath);
-
-    response.data.on("data", (chunk) => {
-      downloadedBytes += chunk.length;
-      if (!isNaN(totalBytes)) {
-        const downloadedMB = parseFloat(
-          (downloadedBytes / (8 * 1024 * 1024)).toFixed(2)
-        );
-        progressBar.update(downloadedMB);
-      }
-    });
-
     await pipeline(response.data, writeStream);
-
-    if (!isNaN(totalBytes)) {
-      progressBar.stop();
-    }
     console.log(`Downloaded: ${filename}`);
   } catch (error) {
-    progressBar.stop();
     console.error(`Error downloading ${filename}:`, error.message);
     throw error;
+  } finally {
+    if (!isWin) progressBar.stop();
   }
 }
 
