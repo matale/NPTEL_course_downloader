@@ -1,5 +1,5 @@
 Downloader for courses from https://nptel.ac.in/courses/  
-Can download multiple courses and multiple languages.
+Can download multiple courses and multiple languages.  
 Will currently download:  
 * Video  
 * Transcript  
