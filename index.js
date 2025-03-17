@@ -9,8 +9,6 @@ import { parse } from "comment-json";
 import cliProgress from "cli-progress";
 import colors from "ansi-colors";
 
-var isWin = process.platform === "win32";
-
 const pipeline = promisify(stream.pipeline);
 
 const __filename = fileURLToPath(import.meta.url);
@@ -92,8 +90,18 @@ function convertDriveUrl(url) {
 }
 
 async function downloadFileWithProgress(url, filePath, filename) {
+  const progressBar = new cliProgress.SingleBar(
+    {
+      format:
+        colors.cyan("{bar}") + "| {percentage}% || {value}/{total} MB",
+      barCompleteChar: "\u2588",
+      barIncompleteChar: "\u2591",
+      hideCursor: true,
+    },
+    cliProgress.Presets.shades_classic
+  );
   try {
-    console.log(`Start downloading: ${filename}`); // Keep this for initial logging
+    console.log(`Start downloading: ${filename}`);
 
     const response = await axios({
       method: "get",
@@ -101,29 +109,17 @@ async function downloadFileWithProgress(url, filePath, filename) {
       responseType: "stream",
     });
 
-    //Progress bar not supported on Windows CMD but might work if using bash in Windows.
-    if (!isWin) {
       let totalBytes = 0;
       let downloadedBytes = 0;
       totalBytes = parseInt(response.headers["content-length"], 10);
 
-      const progressBar = new cliProgress.SingleBar(
-        {
-          format:
-            colors.cyan("{bar}") + "| {percentage}% || {value}/{total} MB",
-          barCompleteChar: "\u2588",
-          barIncompleteChar: "\u2591",
-          hideCursor: true,
-        },
-        cliProgress.Presets.shades_classic
-      );
-
+      let totalMB = 0
       if (isNaN(totalBytes)) {
         console.warn(
           "Content-Length header not found. Progress bar will not be accurate."
         );
       } else {
-        const totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
+        totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
         progressBar.start(totalMB, 0);
       }
 
@@ -136,16 +132,17 @@ async function downloadFileWithProgress(url, filePath, filename) {
           progressBar.update(downloadedMB);
         }
       });
-    }
-
+    
     const writeStream = fs.createWriteStream(filePath);
     await pipeline(response.data, writeStream);
+    progressBar.update(totalMB);
     console.log(`Downloaded: ${filename}`);
   } catch (error) {
     console.error(`Error downloading ${filename}:`, error.message);
     throw error;
   } finally {
-    if (!isWin) progressBar.stop();
+    progressBar.update(downloadedMB)
+    progressBar.stop();
   }
 }
 
