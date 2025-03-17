@@ -92,8 +92,7 @@ function convertDriveUrl(url) {
 async function downloadFileWithProgress(url, filePath, filename) {
   const progressBar = new cliProgress.SingleBar(
     {
-      format:
-        colors.cyan("{bar}") + "| {percentage}% || {value}/{total} MB",
+      format: colors.cyan("{bar}") + "| {percentage}% || {value}/{total} MB",
       barCompleteChar: "\u2588",
       barIncompleteChar: "\u2591",
       hideCursor: true,
@@ -109,39 +108,39 @@ async function downloadFileWithProgress(url, filePath, filename) {
       responseType: "stream",
     });
 
-      let totalBytes = 0;
-      let downloadedBytes = 0;
-      totalBytes = parseInt(response.headers["content-length"], 10);
+    let totalBytes = 0;
+    let downloadedBytes = 0;
+    totalBytes = parseInt(response.headers["content-length"], 10);
 
-      let totalMB = 0
-      if (isNaN(totalBytes)) {
-        console.warn(
-          "Content-Length header not found. Progress bar will not be accurate."
+    let totalMB = 0;
+    if (isNaN(totalBytes)) {
+      console.warn(
+        "Content-Length header not found. Progress bar will not be accurate."
+      );
+    } else {
+      totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
+      progressBar.start(totalMB, 0);
+    }
+
+    response.data.on("data", (chunk) => {
+      downloadedBytes += chunk.length;
+      if (!isNaN(totalBytes)) {
+        const downloadedMB = parseFloat(
+          (downloadedBytes / (8 * 1024 * 1024)).toFixed(2)
         );
-      } else {
-        totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
-        progressBar.start(totalMB, 0);
+        progressBar.update(downloadedMB);
       }
+    });
 
-      response.data.on("data", (chunk) => {
-        downloadedBytes += chunk.length;
-        if (!isNaN(totalBytes)) {
-          const downloadedMB = parseFloat(
-            (downloadedBytes / (8 * 1024 * 1024)).toFixed(2)
-          );
-          progressBar.update(downloadedMB);
-        }
-      });
-    
     const writeStream = fs.createWriteStream(filePath);
     await pipeline(response.data, writeStream);
     progressBar.update(totalMB);
+    progressBar.stop();
     console.log(`Downloaded: ${filename}`);
   } catch (error) {
     console.error(`Error downloading ${filename}:`, error.message);
     throw error;
   } finally {
-    progressBar.update(downloadedMB)
     progressBar.stop();
   }
 }
