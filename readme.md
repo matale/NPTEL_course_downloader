@@ -1,3 +1,4 @@
+**What**  
 Downloader for courses from https://nptel.ac.in/courses/  
 Can download multiple courses and multiple languages.  
 Will currently download:  
@@ -9,7 +10,8 @@ Working on:
 * Audio
 * Assignments
 
-How to use:  
+**How to use:**  
+You need to have https://nodejs.org/ installed.  
 1. Clone the repo  
 :warning: Edit config.json to include the courses and languages you want to download.
 
@@ -25,7 +27,7 @@ node index.js
 
 A downloads folder will be created in the project folder where all files will be saved each under the course name.
 
-Possible improvements:  
+**Possible improvements:**  
 * Currently downloads 1 file at a time, some parallelism would be faster, ran into some reliability issues trying to implement that. So just relax and let it download, maybe go for a :walking: 
 * Doesn't attempt to do any cleanup or resume.
 * File might be corrupt if download is interrupted in the middle.
