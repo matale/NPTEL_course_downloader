@@ -7,6 +7,7 @@ import { promisify } from "util";
 import stream from "stream";
 import { parse } from "comment-json";
 import cliProgress from "cli-progress";
+import colors from "ansi-colors";
 
 const pipeline = promisify(stream.pipeline);
 
@@ -88,6 +89,66 @@ function convertDriveUrl(url) {
   return `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0`;
 }
 
+async function downloadFileWithProgress(url, filePath, filename) {
+  const progressBar = new cliProgress.SingleBar(
+    {
+      format:
+        colors.cyan("{bar}") +
+        "| {percentage}% || {value}/{total} MB",
+      barCompleteChar: "\u2588",
+      barIncompleteChar: "\u2591",
+      hideCursor: true,
+    },
+    cliProgress.Presets.shades_classic
+  );
+  let totalBytes = 0;
+  let downloadedBytes = 0;
+
+  try {
+    console.log(`Start downloading: ${filename}`); // Keep this for initial logging
+
+    const response = await axios({
+      method: "get",
+      url,
+      responseType: "stream",
+    });
+
+    totalBytes = parseInt(response.headers["content-length"], 10);
+
+    if (isNaN(totalBytes)) {
+      console.warn(
+        "Content-Length header not found. Progress bar will not be accurate."
+      );
+    } else {
+      const totalMB = parseFloat((totalBytes / (8 * 1024 * 1024)).toFixed(2));
+      progressBar.start(totalMB, 0);
+    }
+
+    const writeStream = fs.createWriteStream(filePath);
+
+    response.data.on("data", (chunk) => {
+      downloadedBytes += chunk.length;
+      if (!isNaN(totalBytes)) {
+        const downloadedMB = parseFloat(
+          (downloadedBytes / (8 * 1024 * 1024)).toFixed(2)
+        );
+        progressBar.update(downloadedMB);
+      }
+    });
+
+    await pipeline(response.data, writeStream);
+
+    if (!isNaN(totalBytes)) {
+      progressBar.stop();
+    }
+    console.log(`Downloaded: ${filename}`);
+  } catch (error) {
+    progressBar.stop();
+    console.error(`Error downloading ${filename}:`, error.message);
+    throw error;
+  }
+}
+
 async function downloadVideo(videos, courseTitle, courseId) {
   if (!DOWNLOAD_VIDEOS) {
     console.warn("Configured not to download videos, skipping.");
@@ -99,51 +160,6 @@ async function downloadVideo(videos, courseTitle, courseId) {
   console.log(
     `Total ${videos.length} video files to download for course ${courseTitle}.`
   );
-
-  async function downloadFileWithProgress(url, filePath, filename) {
-    const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
-    let totalBytes = 0;
-    let downloadedBytes = 0;
-
-    try {
-      console.log(`Start downloading: ${filename}`); // Keep this for initial logging
-
-      const response = await axios({
-        method: 'get',
-        url,
-        responseType: 'stream',
-      });
-
-      totalBytes = parseInt(response.headers['content-length'], 10);
-
-      if (isNaN(totalBytes)) {
-        console.warn("Content-Length header not found. Progress bar will not be accurate.");
-      }
-      else {
-        progressBar.start(totalBytes, 0);
-      }
- 
-      const writeStream = fs.createWriteStream(filePath);
-
-      response.data.on('data', (chunk) => {
-        downloadedBytes += chunk.length;
-        if (!isNaN(totalBytes)) {
-          progressBar.update(downloadedBytes);
-        }
-      });
-
-      await pipeline(response.data, writeStream);
-
-      if (!isNaN(totalBytes)) {
-        progressBar.stop();
-      }
-      console.log(`Downloaded: ${filename}`); // Keep this for final logging
-    } catch (error) {
-      progressBar.stop();
-      console.error(`Error downloading ${filename}:`, error.message);
-      throw error;
-    }
-  }
 
   while (videos.length > 0) {
     const video = videos.shift();
@@ -223,15 +239,7 @@ async function downloadTranscripts(transcripts, courseTitle, courseId) {
       )}_${language}.pdf`; //Guessing that all are pdfs since we dont get file extension when downloading from drive.
       const filePath = path.join(transcriptDir, filename);
       try {
-        console.log(`Start downloading: ${filename}`);
-        const response = await axios({
-          method: "get",
-          url,
-          responseType: "stream",
-        });
-
-        await pipeline(response.data, fs.createWriteStream(filePath));
-        console.log(`Downloaded: ${filename}`);
+        await downloadFileWithProgress(url, filePath, filename);
       } catch (error) {
         console.error(`Error downloading ${filename}:`, error.message);
       }
@@ -275,15 +283,7 @@ async function downloadBooks(books, courseTitle, courseId) {
     const filePath = path.join(bookDir, filename);
 
     try {
-      console.log(`Start downloading: ${filename}`);
-      const response = await axios({
-        method: "get",
-        url,
-        responseType: "stream",
-      });
-
-      await pipeline(response.data, fs.createWriteStream(filePath));
-      console.log(`Downloaded: ${filename}`);
+      await downloadFileWithProgress(url, filePath, filename);
     } catch (error) {
       console.error(`Error downloading ${filename}:`, error.message);
     }
