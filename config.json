@@ -5,9 +5,9 @@
 
   /*   The transcript languages you want to download.
   Empty means dont download any */
-  "transcript_languages": ["english"], // Can include multiple languages
+  "transcript_languages": ["english"], // Can include multiple languages.
   "book_languages":["english"],
-  "audio_languages":[], //If empty will not download any audio
+  "audio_languages":[], //If empty will not download any audio.
   "download_assignments": true,
-  "download_videos": true //Can skip video if set to false.
+  "download_videos": true //Can skip downloads if set to false.
 }
