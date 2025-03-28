@@ -8,6 +8,7 @@ import stream from "stream";
 import { parse } from "comment-json";
 import cliProgress from "cli-progress";
 import colors from "ansi-colors";
+import pLimit from "p-limit";
 
 const pipeline = promisify(stream.pipeline);
 
@@ -148,6 +149,7 @@ async function downloadFileWithProgress(url, filePath, filename) {
 async function downloadVideo(videos, courseTitle, courseId) {
   if (!DOWNLOAD_VIDEOS) {
     console.warn("Configured not to download videos, skipping.");
+    return;
   }
   if (!videos || !Array.isArray(videos)) {
     throw new Error("Invalid course downloads data");
@@ -157,30 +159,37 @@ async function downloadVideo(videos, courseTitle, courseId) {
     `Total ${videos.length} video files to download for course ${courseTitle}.`
   );
 
-  while (videos.length > 0) {
-    const video = videos.shift();
+  const videosDir = `downloads/${courseId}_${courseTitle}/videos`.replace(
+    /[\s:]+/g,
+    "_"
+  );
 
-    const videosDir = `downloads/${courseId}_${courseTitle}/videos`.replace(
-      /[\s:]+/g,
-      "_"
-    );
-
-    if (!fs.existsSync(videosDir)) {
-      fs.mkdirSync(videosDir, { recursive: true });
-    }
-    const { title, url, lesson_id } = video;
-    const filename = `${lesson_id.padStart(2, "0")}_${title.replace(
-      /\s+/g,
-      "_"
-    )}_${path.basename(url)}`;
-    const filePath = path.join(videosDir, filename);
-
-    try {
-      await downloadFileWithProgress(url, filePath, filename);
-    } catch (error) {
-      console.error(`Error downloading ${filename}:`, error.message);
-    }
+  if (!fs.existsSync(videosDir)) {
+    fs.mkdirSync(videosDir, { recursive: true });
   }
+
+  // Limit concurrency to 3 downloads at a time
+  const limit = pLimit(3);
+
+  const downloadPromises = videos.map((video) =>
+    limit(async () => {
+      const { title, url, lesson_id } = video;
+      const filename = `${lesson_id.padStart(2, "0")}_${title.replace(
+        /\s+/g,
+        "_"
+      )}_${path.basename(url)}`;
+      const filePath = path.join(videosDir, filename);
+
+      try {
+        await downloadFileWithProgress(url, filePath, filename);
+      } catch (error) {
+        console.error(`Error downloading ${filename}:`, error.message);
+      }
+    })
+  );
+
+  await Promise.all(downloadPromises);
+  console.log(`All videos for course ${courseTitle} have been downloaded.`);
 }
 
 async function downloadTranscripts(transcripts, courseTitle, courseId) {

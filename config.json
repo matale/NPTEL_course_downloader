@@ -1,13 +1,13 @@
 {
   // You can find the courses at https://nptel.ac.in/courses
   // Ids of the courses you want to download, this is the number at the end of the course url e.g. https://nptel.ac.in/courses/112106298
-  "course_ids_to_download": [], // Required. Should be string like this ["112106298", "106106147"]
+  "course_ids_to_download": ["112106298"], // Required. Should be string like this ["112106298", "106106147"]
 
   /*   The transcript languages you want to download.
   Empty means dont download any */
   "transcript_languages": ["english"], // Can include multiple languages.
-  "book_languages":["english"],
-  "audio_languages":[], //If empty will not download any audio.
+  "book_languages": ["english"],
+  "audio_languages": [], //If empty will not download any audio.
   "download_assignments": true,
   "download_videos": true //Can skip downloads if set to false.
 }
